@@ -1,0 +1,10 @@
+# Terraform-specific stuff
+**/.terraform.lock.hcl
+**/.terraform
+**/terraform.tfstate
+**/terraform.tfstate.backup
+
+# Files that shouldn't make it online
+**/files
+**/secrets.tfvars
+**/ca_certificate.tf
