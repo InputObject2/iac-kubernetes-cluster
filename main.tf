@@ -11,7 +11,7 @@ terraform {
 provider "xenorchestra" {
   # Configuration options
   # Must be ws or wss
-  url = "wss://xen-orchestra.ntmax.ca" # Or set XOA_URL environment variable
+  url = var.xen_xoa_url # Or set XOA_URL environment variable
   #username = "root"              # Or set XOA_USER environment variable
   #password = "<password>"              # Or set XOA_PASSWORD environment variable
 
@@ -24,11 +24,15 @@ provider "xenorchestra" {
 }
 
 data "local_file" "cloud_config" {
-  filename = "files/cloud_config_full.txt"
+  filename = "files/cloud_config_full.yaml"
 }
 
 data "local_file" "cloud_network_config" {
-  filename = "files/cloud_network_config.txt"
+  filename = "files/cloud_network_config.yaml"
+}
+
+data "local_file" "rke_template_config" {
+  filename = "files/rke_template.yaml"
 }
 
 resource "random_uuid" "vm_id" {
@@ -36,58 +40,78 @@ resource "random_uuid" "vm_id" {
 }
 
 resource "random_uuid" "vm_master_id" {
-  count = var.vm_count
+  count = var.master_count
 }
 
 resource "xenorchestra_cloud_config" "ansible_base" {
-  name     = "cloud-centos-base-for-ansible"
-  template = data.local_file.cloud_config.content
+  count = var.vm_count
+  name  = "centos-base-config-node-${count.index}"
+  #template = data.local_file.cloud_config.content
+  template = <<EOF
+#cloud-config
+hostname: "${var.vm_prefix}-${random_uuid.vm_id[count.index].result}.${var.dns_sub_zone}.${lower(var.dns_zone)}"
+
+users:
+  - name: cloud-user
+    gecos: cloud-user
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ${var.vm_rsa_ssh_key}
+EOF
+}
+
+resource "xenorchestra_cloud_config" "ansible_base_master" {
+  count = var.master_count
+  name  = "centos-base-config-master-${count.index}"
+  #template = data.local_file.cloud_config.content
+  template = <<EOF
+#cloud-config
+hostname: "${var.vm_prefix}-${random_uuid.vm_master_id[count.index].result}.${var.dns_sub_zone}.${lower(var.dns_zone)}"
+
+users:
+  - name: cloud-user
+    gecos: cloud-user
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ${var.vm_rsa_ssh_key}
+EOF
+}
+
+resource "xenorchestra_cloud_config" "cloud_network_config" {
+  name     = "Network Cloud Config"
+  template = data.local_file.cloud_network_config.content
 }
 
 # docs : https://github.com/terra-farm/terraform-provider-xenorchestra/blob/master/docs/resources/vm.md
 data "xenorchestra_pool" "pool" {
-  name_label = "Cluster-XCP"
+  name_label = var.xen_pool_name
 }
 
 data "xenorchestra_network" "net" {
-  name_label = "k8s.ntmax.ca"
+  name_label = var.xen_network_name
   pool_id    = data.xenorchestra_pool.pool.id
 }
 
 data "xenorchestra_template" "centos" {
-  name_label = "Cloud-init - CentOS"
-}
-
-data "xenorchestra_sr" "truenas_fast" {
-  name_label = "[NFS] TrueNAS Fast"
-}
-
-data "xenorchestra_sr" "truenas_slow" {
-  name_label = "[NFS] TrueNAS Slow"
+  name_label = var.xen_template_name
 }
 
 data "xenorchestra_sr" "truenas_ssd" {
-  name_label = "[NFS] TrueNAS SSD"
-}
-
-data "xenorchestra_sr" "iscsi_ssd" {
-  name_label = "[iSCSI] SSD VM Storage"
-}
-
-data "xenorchestra_sr" "iscsi_hdd" {
-  name_label = "[iSCSI] HDD VM Storage"
+  name_label = var.xen_sr_name
 }
 
 resource "xenorchestra_vm" "vm" {
   count = var.vm_count
 
   name_label           = "${var.vm_prefix}-${random_uuid.vm_id[count.index].result}"
-  cloud_config         = xenorchestra_cloud_config.ansible_base.template
-  cloud_network_config = data.local_file.cloud_network_config.content
+  cloud_config         = xenorchestra_cloud_config.ansible_base[count.index].template
+  cloud_network_config = xenorchestra_cloud_config.cloud_network_config.template
   template             = data.xenorchestra_template.centos.id
   auto_poweron         = true
 
-  name_description = "${var.vm_prefix}-${random_uuid.vm_id[count.index].result}.k8s.ntmax.ca"
+  name_description = "${var.vm_prefix}-${random_uuid.vm_id[count.index].result}.${var.dns_sub_zone}.${substr(lower(var.dns_zone), 0, length(var.dns_zone) - 1)}"
 
   network {
     network_id = data.xenorchestra_network.net.id
@@ -104,25 +128,19 @@ resource "xenorchestra_vm" "vm" {
 
   wait_for_ip = true
 
-  tags = [
-    "centos",
-    "kubernetes",
-    "ansible",
-    "terraform-managed",
-    "kubernetes.io/role:worker"
-  ]
+  tags = var.node_vm_tags
 }
 
 resource "xenorchestra_vm" "vm_master" {
   count = var.master_count
 
   name_label           = "${var.master_prefix}-${random_uuid.vm_master_id[count.index].result}"
-  cloud_config         = xenorchestra_cloud_config.ansible_base.template
-  cloud_network_config = data.local_file.cloud_network_config.content
+  cloud_config         = xenorchestra_cloud_config.ansible_base_master[count.index].template
+  cloud_network_config = xenorchestra_cloud_config.cloud_network_config.template
   template             = data.xenorchestra_template.centos.id
   auto_poweron         = true
 
-  name_description = "${var.master_prefix}-${random_uuid.vm_master_id[count.index].result}.k8s.ntmax.ca"
+  name_description = "${var.master_prefix}-${random_uuid.vm_master_id[count.index].result}.${var.dns_sub_zone}.${substr(lower(var.dns_zone), 0, length(var.dns_zone) - 1)}"
 
   network {
     network_id = data.xenorchestra_network.net.id
@@ -139,32 +157,55 @@ resource "xenorchestra_vm" "vm_master" {
 
   wait_for_ip = true
 
-  tags = [
-    "centos",
-    "kubernetes",
-    "ansible",
-    "terraform-managed",
-    "kubernetes.io/role:master"
-  ]
+  tags = var.master_vm_tags
 }
-
 
 resource "local_file" "ansible_inventory" {
   filename = "files/hosts.yaml"
   content = yamlencode({
     "all" : {
       "vars" : {
-        "ansible_user" : "ansible",
+        "ansible_user" : "cloud-user",
         "ansible_ssh_private_key_file" : "~/.ssh/id_rsa"
       },
       "children" : {
         "k8s-nodes" : {
-          "hosts" : zipmap(xenorchestra_vm.vm[*].name_description, [for e in xenorchestra_vm.vm[*].name_description : {}]) # zipmap(xenorchestra_vm.vm[*].name_description,[for 0..${var.vm_count} : o.id])
+          "hosts" : zipmap(xenorchestra_vm.vm[*].name_description, [for e in xenorchestra_vm.vm[*].name_description : {}])
         },
         "k8s-masters" : {
-          "hosts" : zipmap(xenorchestra_vm.vm_master[*].name_description, [for e in xenorchestra_vm.vm_master[*].name_description : {}]) #zipmap(xenorchestra_vm.vm_master[*].name_description,[for o in var.list : o.id])
+          "hosts" : zipmap(xenorchestra_vm.vm_master[*].name_description, [for e in xenorchestra_vm.vm_master[*].name_description : {}])
         }
       }
   } })
 }
 
+
+resource "local_file" "rke_config" {
+  filename = "files/rke_cluster_config.yml"
+  content = join("", [yamlencode({
+    "nodes" : concat([for e in xenorchestra_vm.vm[*].name_description : {
+      "address" : e,
+      "internal_address" : e,
+      "port" : "22",
+      "role" : ["worker"],
+      "user" : "cloud-user",
+      "docker_socket" : "/run/docker.sock"
+      "ssh_key_path" : "~/.ssh/id_rsa"
+      "labels" : var.node_labels
+      }
+      ],
+      [for e in xenorchestra_vm.vm_master[*].name_description : {
+        "address" : e,
+        "internal_address" : e,
+        "port" : "22",
+        "role" : ["controlplane", "etcd"],
+        "user" : "cloud-user",
+        "docker_socket" : "/run/docker.sock"
+        "ssh_key_path" : "~/.ssh/id_rsa"
+        "labels" : var.master_labels
+        }
+    ])
+    }),
+    data.local_file.rke_template_config.content]
+  )
+}
