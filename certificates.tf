@@ -12,18 +12,21 @@ data "local_file" "domain_root_cert" {
 
 # Kube-admin certificate
 resource "tls_private_key" "kube_admin_key" {
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P384"
+  algorithm = "RSA"
+
 }
 
 resource "tls_cert_request" "kube_admin_csr" {
-  key_algorithm   = "ECDSA"
+  key_algorithm   = "RSA"
   private_key_pem = tls_private_key.kube_admin_key.private_key_pem
 
   subject {
     common_name         = "kube-admin"
-    organization        = "NTMAX Labs"
     organizational_unit = "system:masters"
+    organization        = var.certificate_params["organization"]
+    locality            = var.certificate_params["locality"]
+    province            = var.certificate_params["province"]
+    country             = var.certificate_params["country"]
   }
 
   dns_names = concat(
@@ -32,7 +35,8 @@ resource "tls_cert_request" "kube_admin_csr" {
       "kubernetes",
       "kubernetes.default",
       "kubernetes.default.svc",
-    "kubernetes.default.svc.cluster.k8s.ntmax.ca"]
+      "kubernetes.default.svc.cluster.${var.dns_sub_zone}.${substr(lower(var.dns_zone), 0, length(var.dns_zone) - 1)}",
+    "controlplane.${var.dns_sub_zone}.${substr(lower(var.dns_zone), 0, length(var.dns_zone) - 1)}"]
   )
 
   ip_addresses = concat(
@@ -46,7 +50,7 @@ resource "tls_locally_signed_cert" "kube_admin_cert" {
   cert_request_pem   = tls_cert_request.kube_admin_csr.cert_request_pem
   ca_key_algorithm   = "ECDSA"
   ca_private_key_pem = data.local_file.ca_private_key.content
-  ca_cert_pem        = data.local_file.ca_public_cert.content
+  ca_cert_pem        = "${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
   validity_period_hours = 87600
 
@@ -61,7 +65,7 @@ resource "tls_locally_signed_cert" "kube_admin_cert" {
 
 resource "local_file" "kube_admin_cert" {
   filename = "files/certificates/kube-admin.pem"
-  content  = "${tls_locally_signed_cert.kube_admin_cert.cert_pem} ${data.local_file.ca_public_cert.content} ${data.local_file.domain_root_cert.content}"
+  content  = "${tls_locally_signed_cert.kube_admin_cert.cert_pem}${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
 }
 
@@ -73,17 +77,20 @@ resource "local_file" "kube_admin_key" {
 
 # Kube-apiserver
 resource "tls_private_key" "kube_apiserver_key" {
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P384"
+  algorithm = "RSA"
+
 }
 
 resource "tls_cert_request" "kube_apiserver_csr" {
-  key_algorithm   = "ECDSA"
+  key_algorithm   = "RSA"
   private_key_pem = tls_private_key.kube_apiserver_key.private_key_pem
 
   subject {
     common_name  = "kube-apiserver"
-    organization = "NTMAX Labs"
+    organization = var.certificate_params["organization"]
+    locality     = var.certificate_params["locality"]
+    province     = var.certificate_params["province"]
+    country      = var.certificate_params["country"]
   }
 
   dns_names = concat(
@@ -92,7 +99,8 @@ resource "tls_cert_request" "kube_apiserver_csr" {
       "kubernetes",
       "kubernetes.default",
       "kubernetes.default.svc",
-    "kubernetes.default.svc.cluster.k8s.ntmax.ca"]
+      "kubernetes.default.svc.cluster.${var.dns_sub_zone}.${substr(lower(var.dns_zone), 0, length(var.dns_zone) - 1)}",
+    "controlplane.${var.dns_sub_zone}.${substr(lower(var.dns_zone), 0, length(var.dns_zone) - 1)}"]
   )
 
   ip_addresses = concat(
@@ -106,7 +114,7 @@ resource "tls_locally_signed_cert" "kube_apiserver_cert" {
   cert_request_pem   = tls_cert_request.kube_apiserver_csr.cert_request_pem
   ca_key_algorithm   = "ECDSA"
   ca_private_key_pem = data.local_file.ca_private_key.content
-  ca_cert_pem        = data.local_file.ca_public_cert.content
+  ca_cert_pem        = "${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
   validity_period_hours = 87600
 
@@ -121,7 +129,7 @@ resource "tls_locally_signed_cert" "kube_apiserver_cert" {
 
 resource "local_file" "kube_apiserver_cert" {
   filename = "files/certificates/kube-apiserver.pem"
-  content  = "${tls_locally_signed_cert.kube_apiserver_cert.cert_pem} ${data.local_file.ca_public_cert.content} ${data.local_file.domain_root_cert.content}"
+  content  = "${tls_locally_signed_cert.kube_apiserver_cert.cert_pem}${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
 }
 
@@ -133,17 +141,20 @@ resource "local_file" "kube_apiserver_key" {
 
 # Kube_apiserver_proxy_client
 resource "tls_private_key" "kube_apiserver_proxy_client_key" {
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P384"
+  algorithm = "RSA"
+
 }
 
 resource "tls_cert_request" "kube_apiserver_proxy_client_csr" {
-  key_algorithm   = "ECDSA"
+  key_algorithm   = "RSA"
   private_key_pem = tls_private_key.kube_apiserver_proxy_client_key.private_key_pem
 
   subject {
     common_name  = "kube-apiserver-proxy-client"
-    organization = "NTMAX Labs"
+    organization = var.certificate_params["organization"]
+    locality     = var.certificate_params["locality"]
+    province     = var.certificate_params["province"]
+    country      = var.certificate_params["country"]
   }
 }
 
@@ -151,7 +162,7 @@ resource "tls_locally_signed_cert" "kube_apiserver_proxy_client_cert" {
   cert_request_pem   = tls_cert_request.kube_apiserver_proxy_client_csr.cert_request_pem
   ca_key_algorithm   = "ECDSA"
   ca_private_key_pem = data.local_file.ca_private_key.content
-  ca_cert_pem        = data.local_file.ca_public_cert.content
+  ca_cert_pem        = "${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
   validity_period_hours = 87600
 
@@ -166,7 +177,7 @@ resource "tls_locally_signed_cert" "kube_apiserver_proxy_client_cert" {
 
 resource "local_file" "kube_apiserver_proxy_client_cert" {
   filename = "files/certificates/kube-apiserver-proxy-client.pem"
-  content  = "${tls_locally_signed_cert.kube_apiserver_proxy_client_cert.cert_pem} ${data.local_file.ca_public_cert.content} ${data.local_file.domain_root_cert.content}"
+  content  = "${tls_locally_signed_cert.kube_apiserver_proxy_client_cert.cert_pem}${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
 }
 
@@ -178,17 +189,20 @@ resource "local_file" "kube_apiserver_proxy_client_key" {
 
 # kube-controller-manager
 resource "tls_private_key" "kube-controller-manager_key" {
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P384"
+  algorithm = "RSA"
+
 }
 
 resource "tls_cert_request" "kube-controller-manager_csr" {
-  key_algorithm   = "ECDSA"
+  key_algorithm   = "RSA"
   private_key_pem = tls_private_key.kube-controller-manager_key.private_key_pem
 
   subject {
     common_name  = "system:kube-controller-manager"
-    organization = "NTMAX Labs"
+    organization = var.certificate_params["organization"]
+    locality     = var.certificate_params["locality"]
+    province     = var.certificate_params["province"]
+    country      = var.certificate_params["country"]
   }
 }
 
@@ -196,7 +210,7 @@ resource "tls_locally_signed_cert" "kube-controller-manager_cert" {
   cert_request_pem   = tls_cert_request.kube-controller-manager_csr.cert_request_pem
   ca_key_algorithm   = "ECDSA"
   ca_private_key_pem = data.local_file.ca_private_key.content
-  ca_cert_pem        = data.local_file.ca_public_cert.content
+  ca_cert_pem        = "${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
   validity_period_hours = 87600
 
@@ -211,7 +225,7 @@ resource "tls_locally_signed_cert" "kube-controller-manager_cert" {
 
 resource "local_file" "kube-controller-manager_cert" {
   filename = "files/certificates/kube-controller-manager.pem"
-  content  = "${tls_locally_signed_cert.kube-controller-manager_cert.cert_pem} ${data.local_file.ca_public_cert.content} ${data.local_file.domain_root_cert.content}"
+  content  = "${tls_locally_signed_cert.kube-controller-manager_cert.cert_pem}${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
 }
 
@@ -223,25 +237,28 @@ resource "local_file" "kube-controller-manager_key" {
 
 # kube-etcd
 resource "tls_private_key" "kube_etcd_key" {
-  count       = var.master_count
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P384"
+  count     = var.master_count
+  algorithm = "RSA"
+
 }
 
 resource "tls_cert_request" "kube_etcd_csr" {
   count           = var.master_count
-  key_algorithm   = "ECDSA"
+  key_algorithm   = "RSA"
   private_key_pem = tls_private_key.kube_etcd_key[count.index].private_key_pem
 
   subject {
     common_name  = "kube-etcd"
-    organization = "NTMAX Labs"
+    organization = var.certificate_params["organization"]
+    locality     = var.certificate_params["locality"]
+    province     = var.certificate_params["province"]
+    country      = var.certificate_params["country"]
   }
 
   dns_names = [
-    "k8s.ntmax.ca",
-    "controlplane.k8s.ntmax.ca",
-    "controlplane.ntmax.ca",
+    "${var.dns_sub_zone}.${substr(lower(var.dns_zone), 0, length(var.dns_zone) - 1)}",
+    "controlplane.${var.dns_sub_zone}.${substr(lower(var.dns_zone), 0, length(var.dns_zone) - 1)}",
+    "controlplane.${substr(lower(var.dns_zone), 0, length(var.dns_zone) - 1)}",
     xenorchestra_vm.vm_master[count.index].name_description
   ]
 }
@@ -251,7 +268,7 @@ resource "tls_locally_signed_cert" "kube_etcd_cert" {
   cert_request_pem   = tls_cert_request.kube_etcd_csr[count.index].cert_request_pem
   ca_key_algorithm   = "ECDSA"
   ca_private_key_pem = data.local_file.ca_private_key.content
-  ca_cert_pem        = data.local_file.ca_public_cert.content
+  ca_cert_pem        = "${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
   validity_period_hours = 87600
 
@@ -267,7 +284,7 @@ resource "tls_locally_signed_cert" "kube_etcd_cert" {
 resource "local_file" "kube_etcd_cert" {
   count    = var.master_count
   filename = "files/certificates/kube-etcd-${replace(xenorchestra_vm.vm_master[count.index].name_description, ".", "-")}.pem"
-  content  = "${tls_locally_signed_cert.kube_etcd_cert[count.index].cert_pem} ${data.local_file.ca_public_cert.content} ${data.local_file.domain_root_cert.content}"
+  content  = "${tls_locally_signed_cert.kube_etcd_cert[count.index].cert_pem}${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
 }
 
@@ -280,19 +297,22 @@ resource "local_file" "kube_etcd_key" {
 
 # kube-kubelet-master
 resource "tls_private_key" "kube_kubelet_master_key" {
-  count       = var.master_count
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P384"
+  count     = var.master_count
+  algorithm = "RSA"
+
 }
 
 resource "tls_cert_request" "kube_kubelet_master_csr" {
   count           = var.master_count
-  key_algorithm   = "ECDSA"
+  key_algorithm   = "RSA"
   private_key_pem = tls_private_key.kube_kubelet_master_key[count.index].private_key_pem
 
   subject {
     common_name  = "kube-kubelet"
-    organization = "NTMAX Labs"
+    organization = var.certificate_params["organization"]
+    locality     = var.certificate_params["locality"]
+    province     = var.certificate_params["province"]
+    country      = var.certificate_params["country"]
   }
 
   dns_names = [
@@ -305,7 +325,7 @@ resource "tls_locally_signed_cert" "kube_kubelet_master_cert" {
   cert_request_pem   = tls_cert_request.kube_kubelet_master_csr[count.index].cert_request_pem
   ca_key_algorithm   = "ECDSA"
   ca_private_key_pem = data.local_file.ca_private_key.content
-  ca_cert_pem        = data.local_file.ca_public_cert.content
+  ca_cert_pem        = "${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
   validity_period_hours = 87600
 
@@ -321,7 +341,7 @@ resource "tls_locally_signed_cert" "kube_kubelet_master_cert" {
 resource "local_file" "kube_kubelet_master_cert" {
   count    = var.master_count
   filename = "files/certificates/kube-kubelet-${replace(xenorchestra_vm.vm_master[count.index].name_description, ".", "-")}.pem"
-  content  = "${tls_locally_signed_cert.kube_kubelet_master_cert[count.index].cert_pem} ${data.local_file.ca_public_cert.content} ${data.local_file.domain_root_cert.content}"
+  content  = "${tls_locally_signed_cert.kube_kubelet_master_cert[count.index].cert_pem}${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
 }
 
@@ -334,19 +354,22 @@ resource "local_file" "kube_kubelet_master_key" {
 
 # kube-kubelet-nodes
 resource "tls_private_key" "kube_kubelet_node_key" {
-  count       = var.vm_count
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P384"
+  count     = var.vm_count
+  algorithm = "RSA"
+
 }
 
 resource "tls_cert_request" "kube_kubelet_node_csr" {
   count           = var.vm_count
-  key_algorithm   = "ECDSA"
+  key_algorithm   = "RSA"
   private_key_pem = tls_private_key.kube_kubelet_node_key[count.index].private_key_pem
 
   subject {
     common_name  = "kube-kubelet"
-    organization = "NTMAX Labs"
+    organization = var.certificate_params["organization"]
+    locality     = var.certificate_params["locality"]
+    province     = var.certificate_params["province"]
+    country      = var.certificate_params["country"]
   }
 
   dns_names = [
@@ -359,7 +382,7 @@ resource "tls_locally_signed_cert" "kube_kubelet_node_cert" {
   cert_request_pem   = tls_cert_request.kube_kubelet_node_csr[count.index].cert_request_pem
   ca_key_algorithm   = "ECDSA"
   ca_private_key_pem = data.local_file.ca_private_key.content
-  ca_cert_pem        = data.local_file.ca_public_cert.content
+  ca_cert_pem        = "${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
   validity_period_hours = 87600
 
@@ -375,7 +398,7 @@ resource "tls_locally_signed_cert" "kube_kubelet_node_cert" {
 resource "local_file" "kube_kubelet_node_cert" {
   count    = var.vm_count
   filename = "files/certificates/kube-kubelet-${replace(xenorchestra_vm.vm[count.index].name_description, ".", "-")}.pem"
-  content  = "${tls_locally_signed_cert.kube_kubelet_node_cert[count.index].cert_pem} ${data.local_file.ca_public_cert.content} ${data.local_file.domain_root_cert.content}"
+  content  = "${tls_locally_signed_cert.kube_kubelet_node_cert[count.index].cert_pem}${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}" # 
 
 }
 
@@ -388,18 +411,21 @@ resource "local_file" "kube_kubelet_node_key" {
 
 # kube-node
 resource "tls_private_key" "kube_node_key" {
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P384"
+  algorithm = "RSA"
+
 }
 
 resource "tls_cert_request" "kube_node_csr" {
-  key_algorithm   = "ECDSA"
+  key_algorithm   = "RSA"
   private_key_pem = tls_private_key.kube_node_key.private_key_pem
 
   subject {
     common_name         = "system:node"
-    organization        = "NTMAX Labs"
     organizational_unit = "system:nodes"
+    organization        = var.certificate_params["organization"]
+    locality            = var.certificate_params["locality"]
+    province            = var.certificate_params["province"]
+    country             = var.certificate_params["country"]
   }
 }
 
@@ -407,7 +433,7 @@ resource "tls_locally_signed_cert" "kube_node_cert" {
   cert_request_pem   = tls_cert_request.kube_node_csr.cert_request_pem
   ca_key_algorithm   = "ECDSA"
   ca_private_key_pem = data.local_file.ca_private_key.content
-  ca_cert_pem        = data.local_file.ca_public_cert.content
+  ca_cert_pem        = "${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
   validity_period_hours = 87600
 
@@ -422,7 +448,7 @@ resource "tls_locally_signed_cert" "kube_node_cert" {
 
 resource "local_file" "kube_node_cert" {
   filename = "files/certificates/kube-node.pem"
-  content  = "${tls_locally_signed_cert.kube_node_cert.cert_pem} ${data.local_file.ca_public_cert.content} ${data.local_file.domain_root_cert.content}"
+  content  = "${tls_locally_signed_cert.kube_node_cert.cert_pem}${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
 }
 
@@ -434,17 +460,20 @@ resource "local_file" "kube_node_key" {
 
 # kube-proxy
 resource "tls_private_key" "kube_proxy_key" {
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P384"
+  algorithm = "RSA"
+
 }
 
 resource "tls_cert_request" "kube_proxy_csr" {
-  key_algorithm   = "ECDSA"
+  key_algorithm   = "RSA"
   private_key_pem = tls_private_key.kube_proxy_key.private_key_pem
 
   subject {
     common_name  = "system:kube-proxy"
-    organization = "NTMAX Labs"
+    organization = var.certificate_params["organization"]
+    locality     = var.certificate_params["locality"]
+    province     = var.certificate_params["province"]
+    country      = var.certificate_params["country"]
   }
 }
 
@@ -452,7 +481,7 @@ resource "tls_locally_signed_cert" "kube_proxy_cert" {
   cert_request_pem   = tls_cert_request.kube_proxy_csr.cert_request_pem
   ca_key_algorithm   = "ECDSA"
   ca_private_key_pem = data.local_file.ca_private_key.content
-  ca_cert_pem        = data.local_file.ca_public_cert.content
+  ca_cert_pem        = "${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
   validity_period_hours = 87600
 
@@ -467,7 +496,7 @@ resource "tls_locally_signed_cert" "kube_proxy_cert" {
 
 resource "local_file" "kube_proxy_cert" {
   filename = "files/certificates/kube-proxy.pem"
-  content  = "${tls_locally_signed_cert.kube_proxy_cert.cert_pem} ${data.local_file.ca_public_cert.content} ${data.local_file.domain_root_cert.content}"
+  content  = "${tls_locally_signed_cert.kube_proxy_cert.cert_pem}${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
 }
 
@@ -479,17 +508,20 @@ resource "local_file" "kube_proxy_key" {
 
 # kube-scheduler
 resource "tls_private_key" "kube_scheduler_key" {
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P384"
+  algorithm = "RSA"
+
 }
 
 resource "tls_cert_request" "kube_scheduler_csr" {
-  key_algorithm   = "ECDSA"
+  key_algorithm   = "RSA"
   private_key_pem = tls_private_key.kube_scheduler_key.private_key_pem
 
   subject {
     common_name  = "system:kube-scheduler"
-    organization = "NTMAX Labs"
+    organization = var.certificate_params["organization"]
+    locality     = var.certificate_params["locality"]
+    province     = var.certificate_params["province"]
+    country      = var.certificate_params["country"]
   }
 }
 
@@ -497,7 +529,7 @@ resource "tls_locally_signed_cert" "kube_scheduler_cert" {
   cert_request_pem   = tls_cert_request.kube_scheduler_csr.cert_request_pem
   ca_key_algorithm   = "ECDSA"
   ca_private_key_pem = data.local_file.ca_private_key.content
-  ca_cert_pem        = data.local_file.ca_public_cert.content
+  ca_cert_pem        = "${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
   validity_period_hours = 87600
 
@@ -512,7 +544,7 @@ resource "tls_locally_signed_cert" "kube_scheduler_cert" {
 
 resource "local_file" "kube_scheduler_cert" {
   filename = "files/certificates/kube-scheduler.pem"
-  content  = "${tls_locally_signed_cert.kube_scheduler_cert.cert_pem} ${data.local_file.ca_public_cert.content} ${data.local_file.domain_root_cert.content}"
+  content  = "${tls_locally_signed_cert.kube_scheduler_cert.cert_pem}${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
 }
 
@@ -524,20 +556,20 @@ resource "local_file" "kube_scheduler_key" {
 
 # kube-service-account-token
 resource "tls_private_key" "kube_service_account_token_key" {
-  algorithm   = "ECDSA"
-  ecdsa_curve = "P384"
+  algorithm = "RSA"
+
 }
 
 resource "tls_cert_request" "kube_service_account_token_csr" {
-  key_algorithm   = "ECDSA"
+  key_algorithm   = "RSA"
   private_key_pem = tls_private_key.kube_service_account_token_key.private_key_pem
 
   subject {
-    common_name  = "k8s.ntmax.ca"
-    organization = "NTMAX Labs"
-    locality     = "Montreal"
-    province     = "Quebec"
-    country      = "CA"
+    common_name  = "k8s.${var.dns_zone}"
+    organization = var.certificate_params["organization"]
+    locality     = var.certificate_params["locality"]
+    province     = var.certificate_params["province"]
+    country      = var.certificate_params["country"]
   }
 }
 
@@ -545,7 +577,7 @@ resource "tls_locally_signed_cert" "kube_service_account_token_cert" {
   cert_request_pem   = tls_cert_request.kube_service_account_token_csr.cert_request_pem
   ca_key_algorithm   = "ECDSA"
   ca_private_key_pem = data.local_file.ca_private_key.content
-  ca_cert_pem        = data.local_file.ca_public_cert.content
+  ca_cert_pem        = "${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
   validity_period_hours = 87600
 
@@ -560,7 +592,7 @@ resource "tls_locally_signed_cert" "kube_service_account_token_cert" {
 
 resource "local_file" "kube_service_account_token_cert" {
   filename = "files/certificates/kube-service-account-token.pem"
-  content  = "${tls_locally_signed_cert.kube_service_account_token_cert.cert_pem} ${data.local_file.ca_public_cert.content} ${data.local_file.domain_root_cert.content}"
+  content  = "${tls_locally_signed_cert.kube_service_account_token_cert.cert_pem}${data.local_file.ca_public_cert.content}\n${data.local_file.domain_root_cert.content}"
 
 }
 
