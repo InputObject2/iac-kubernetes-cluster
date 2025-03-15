@@ -1,0 +1,114 @@
+redis-ha:
+  enabled: true
+
+controller:
+  replicas: 1
+
+server:
+  env:
+    - name: AVP_TYPE
+      value: "vault"
+    - name: AVP_VAULT_ADDR
+      value: "https://vault.cloud.ntmax.ca"
+    - name: AVP_AUTH_TYPE
+      value: "approle"
+    - name: AVP_ROLE_ID
+      valueFrom:
+        secretKeyRef:
+          name: argocd-vault-auth
+          key: VAULT_ROLE_ID
+    - name: AVP_SECRET_ID
+      valueFrom:
+        secretKeyRef:
+          name: argocd-vault-auth
+          key: VAULT_SECRET_ID
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+  # Argo CD server ingress configuration
+  ingress:
+    controller: generic
+    enabled: true
+    annotations:
+      external-dns.alpha.kubernetes.io/hostname: deploy.<secrets/secrets/common/infra#network_dns_zone>.
+      cert-manager.io/cluster-issuer: letsencrypt-production-dns01
+    ingressClassName: nginx
+    tls: true
+    hostname: deploy.<secrets/secrets/common/infra#network_dns_zone>
+  extraArgs:
+    - --insecure # needed for nginx-ingress since it does the TLS termination
+  extensions:
+    enabled: true
+    extensionList:
+    - name: argo-vault-plugin-helm
+      env:
+        - name: EXTENSION_URL
+          value: https://github.com/argoproj-labs/argocd-vault-plugin/archive/refs/tags/v1.18.1.tar.gz
+        - name: EXTENSION_CHECKSUM_URL
+          value: https://github.com/argoproj-labs/argocd-vault-plugin/releases/download/v1.18.1/argocd-vault-plugin_1.18.1_checksums.txt
+
+repoServer:
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+  env:
+    - name: AVP_TYPE
+      value: "vault"
+    - name: AVP_VAULT_ADDR
+      value: "https://vault.cloud.ntmax.ca"
+    - name: AVP_AUTH_TYPE
+      value: "approle"
+    - name: AVP_ROLE_ID
+      valueFrom:
+        secretKeyRef:
+          name: argocd-vault-auth
+          key: VAULT_ROLE_ID
+    - name: AVP_SECRET_ID
+      valueFrom:
+        secretKeyRef:
+          name: argocd-vault-auth
+          key: VAULT_SECRET_ID
+
+applicationSet:
+  replicas: 2
+
+global:
+  domain: deploy.<secrets/secrets/common/infra#network_dns_zone>
+
+configs:
+  cm:
+    configManagementPlugins: |
+      - name: argocd-vault-plugin-helm
+        init:
+          command: [sh, -c]
+          args: ["helm dependency build"]
+        generate:
+          command: ["sh", "-c"]
+          args: ["helm template $ARGOCD_APP_NAME . --include-crds | argocd-vault-plugin generate -"]
+#  secret:
+#    argocd-vault-plugin:
+#      VAULT_ROLE_ID: <secrets/secrets/argocd/vault#role_id>
+#      VAULT_SECRET_ID: <secrets/secrets/argocd/vault#secret_id>
+#    dex.config: |
+#      connectors:
+#      - config:
+#          issuer: https://sts.<secrets/secrets/common/infra#network_dns_zone>/application/o/argocd/
+#          clientID: <secrets/secrets/argocd/oidc#client_id>
+#          clientSecret: $dex.authentik.clientSecret
+#          insecureEnableGroups: true
+#          scopes:
+#            - openid
+#            - profile
+#            - email
+#        name: authentik
+#        type: oidc
+#        id: authentik
+#  secret:
+#    extra:
+#        dex.authentik.clientSecret: "<secrets/secrets/argocd/oidc#client_secret>"
+
+rbac:
+  policy.csv: |
+    g, sts-argo-admins, role:admin
+    g, sts-argo-viewers, role:readonly
+
