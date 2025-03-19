@@ -12,6 +12,17 @@ spec:
     helm:
       valueFiles:
       - $values/argocd/values.yaml
+    plugin:
+      env:
+        - name: HELM_VALUES
+          value: |
+            server:
+              ingress:
+                annotations:
+                  external-dns.alpha.kubernetes.io/hostname: argocd.<path:secrets/common/infra#network_dns_zone>.
+                hostname: deploy.<secrets/secrets/common/infra#network_dns_zone>
+            global:
+              domain: deploy.<secrets/secrets/common/infra#network_dns_zone>
   - repoURL: https://github.com/InputObject2/iac-kubernetes-cluster.git
     targetRevision: main
     ref: values

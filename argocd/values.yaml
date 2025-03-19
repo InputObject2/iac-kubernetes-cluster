@@ -30,27 +30,48 @@ server:
     controller: generic
     enabled: true
     annotations:
-      external-dns.alpha.kubernetes.io/hostname: deploy.<secrets/secrets/common/infra#network_dns_zone>.
+    #  external-dns.alpha.kubernetes.io/hostname: deploy.<secrets/secrets/common/infra#network_dns_zone>.
       cert-manager.io/cluster-issuer: letsencrypt-production-dns01
     ingressClassName: nginx
     tls: true
-    hostname: deploy.<secrets/secrets/common/infra#network_dns_zone>
+    #hostname: deploy.<secrets/secrets/common/infra#network_dns_zone>
   extraArgs:
     - --insecure # needed for nginx-ingress since it does the TLS termination
-  extensions:
-    enabled: true
-    extensionList:
-    - name: argo-vault-plugin-helm
-      env:
-        - name: EXTENSION_URL
-          value: https://github.com/argoproj-labs/argocd-vault-plugin/archive/refs/tags/v1.18.1.tar.gz
-        - name: EXTENSION_CHECKSUM_URL
-          value: https://github.com/argoproj-labs/argocd-vault-plugin/releases/download/v1.18.1/argocd-vault-plugin_1.18.1_checksums.txt
+  #extensions:
+  #  enabled: true
+  #  extensionList:
+  #  - name: argo-vault-plugin-helm
+  #    env:
+  #      - name: EXTENSION_URL
+  #        value: https://github.com/argoproj-labs/argocd-vault-plugin/archive/refs/tags/v1.18.1.tar.gz
+  #      - name: EXTENSION_CHECKSUM_URL
+  #        value: https://github.com/argoproj-labs/argocd-vault-plugin/releases/download/v1.18.1/argocd-vault-plugin_1.18.1_checksums.txt
 
 repoServer:
+  volumes:
+    - configMap:
+        name: argocd-cmp-cm
+      name: argocd-cmp-cm
+    - name: custom-tools
+      emptyDir: {}
   autoscaling:
     enabled: true
     minReplicas: 2
+  initContainers:
+    - name: download-tools
+      image: registry.access.redhat.com/ubi8
+      env:
+        - name: AVP_VERSION
+          value: "1.18.1"
+      command: ["sh", "-c"]
+      args:
+        - >-
+          curl -L https://github.com/argoproj-labs/argocd-vault-plugin/releases/download/v1.18.1/argocd-vault-plugin_1.18.1_linux_amd64 -o argocd-vault-plugin &&
+          chmod +x argocd-vault-plugin &&
+          mv argocd-vault-plugin /custom-tools/
+      volumeMounts:
+        - name: custom-tools
+          mountPath: /custom-tools
   env:
     - name: AVP_TYPE
       value: "vault"
@@ -68,23 +89,130 @@ repoServer:
         secretKeyRef:
           name: argocd-vault-auth
           key: VAULT_SECRET_ID
+  extraContainers:
+  # argocd-vault-plugin with Helm
+  - name: avp-helm
+    command: [/var/run/argocd/argocd-cmp-server]
+    image: quay.io/argoproj/argocd:v2.10.1
+    env:
+    - name: AVP_TYPE
+      value: "vault"
+    - name: AVP_VAULT_ADDR
+      value: "https://vault.cloud.ntmax.ca"
+    - name: AVP_AUTH_TYPE
+      value: "approle"
+    - name: AVP_ROLE_ID
+      valueFrom:
+        secretKeyRef:
+          name: argocd-vault-auth
+          key: VAULT_ROLE_ID
+    - name: AVP_SECRET_ID
+      valueFrom:
+        secretKeyRef:
+          name: argocd-vault-auth
+          key: VAULT_SECRET_ID
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 999
+    volumeMounts:
+      - mountPath: /var/run/argocd
+        name: var-files
+      - mountPath: /home/argocd/cmp-server/plugins
+        name: plugins
+      - mountPath: /tmp
+        name: tmp
+      - mountPath: /home/argocd/cmp-server/config/plugin.yaml
+        subPath: avp-helm.yaml
+        name: argocd-cmp-cm
+      - name: custom-tools
+        subPath: argocd-vault-plugin
+        mountPath: /usr/local/bin/argocd-vault-plugin
+  - name: avp
+    command: [/var/run/argocd/argocd-cmp-server]
+    image: quay.io/argoproj/argocd:v2.10.1
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 999
+    env:
+    - name: AVP_TYPE
+      value: "vault"
+    - name: AVP_VAULT_ADDR
+      value: "https://vault.cloud.ntmax.ca"
+    - name: AVP_AUTH_TYPE
+      value: "approle"
+    - name: AVP_ROLE_ID
+      valueFrom:
+        secretKeyRef:
+          name: argocd-vault-auth
+          key: VAULT_ROLE_ID
+    - name: AVP_SECRET_ID
+      valueFrom:
+        secretKeyRef:
+          name: argocd-vault-auth
+          key: VAULT_SECRET_ID
+    volumeMounts:
+      - mountPath: /var/run/argocd
+        name: var-files
+      - mountPath: /home/argocd/cmp-server/plugins
+        name: plugins
+      - mountPath: /tmp
+        name: tmp
+      - mountPath: /home/argocd/cmp-server/config/plugin.yaml
+        subPath: avp.yaml
+        name: argocd-cmp-cm
+      - name: custom-tools
+        subPath: argocd-vault-plugin
+        mountPath: /usr/local/bin/argocd-vault-plugin
 
 applicationSet:
   replicas: 2
 
-global:
-  domain: deploy.<secrets/secrets/common/infra#network_dns_zone>
+#global:
+#  domain: deploy.<secrets/secrets/common/infra#network_dns_zone>
 
 configs:
-  cm:
-    configManagementPlugins: |
-      - name: argocd-vault-plugin-helm
-        init:
-          command: [sh, -c]
-          args: ["helm dependency build"]
+  cmp:
+    create: true
+    plugins:
+      avp-helm:
+        allowConcurrency: true
+        discover:
+          find:
+            command:
+              - sh
+              - "-c"
+              - "find . -name 'Chart.yaml' && find . -name 'values.yaml'"
         generate:
-          command: ["sh", "-c"]
-          args: ["helm template $ARGOCD_APP_NAME . --include-crds | argocd-vault-plugin generate -"]
+          command:
+            - bash
+            - "-c"
+            - |
+              helm template $$ARGOCD_APP_NAME -n $$ARGOCD_APP_NAMESPACE . --include-crds |
+              argocd-vault-plugin generate -
+        lockRepo: false
+      avp:
+        allowConcurrency: true
+        discover:
+          find:
+            command:
+              - sh
+              - "-c"
+              - "find . -name '*.yaml' | xargs -I {} grep \"<path\\|avp\\.kubernetes\\.io\" {} | grep ."
+        generate:
+          command:
+            - argocd-vault-plugin
+            - generate
+            - "."
+        lockRepo: false
+  #cm:
+  #  configManagementPlugins: |
+  #    - name: argocd-vault-plugin-helm
+  #      init:
+  #        command: [sh, -c]
+  #        args: ["helm dependency build"]
+  #      generate:
+  #        command: ["sh", "-c"]
+  #        args: ["helm template $ARGOCD_APP_NAME . --include-crds | argocd-vault-plugin generate -"]
 #  secret:
 #    argocd-vault-plugin:
 #      VAULT_ROLE_ID: <secrets/secrets/argocd/vault#role_id>
