@@ -1,0 +1,12 @@
+apiVersion: v2
+name: mealie
+description: A Helm chart for deploying Mealie, a meal manager application
+type: application
+version: 0.1.0
+appVersion: "2.3.0"
+
+dependencies:
+  - name: app-template
+    repository: https://bjw-s.github.io/helm-charts/
+    version: 2.3.0
+    alias: mealie

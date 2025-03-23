@@ -1,0 +1,89 @@
+mealie:
+  ingress:
+    main:
+      enabled: true
+      ingressClassName: nginx
+      annotations:
+        external-dns.alpha.kubernetes.io/hostname: recettes.<path:secrets/data/common/infra#network_dns_zone>.
+        cert-manager.io/cluster-issuer: letsencrypt-production-dns01
+        hajimari.io/enable: "true"
+        kubernetes.io/ingress.class: nginx
+      hosts:
+        - host: recettes.<path:secrets/data/common/infra#network_dns_zone>
+          paths:
+            - path: "/"
+              pathType: Prefix
+              service:
+                name: main
+                port: http
+      tls:
+        - secretName: recettes-tls
+          hosts:
+            - recettes.<path:secrets/data/common/infra#network_dns_zone>
+
+  persistence:
+    config:
+      enabled: true
+      accessMode: ReadWriteMany
+      storageClass: truenas-nfs-nas
+      size: 3Gi
+      advancedMounts:
+        main: # the controller with the "main" identifier
+          main: # the container with the "main" identifier
+            - path: /config
+    api-data:
+      accessMode: ReadWriteMany
+      enabled: true
+      mountPath: /app/data/
+      size: 10Gi
+      storageClass: truenas-nfs-nas
+      advancedMounts:
+        main: # the controller with the "main" identifier
+          main: # the container with the "main" identifier
+            - path: /app/data/
+
+  controllers:
+    main:
+      type: deployment
+      replicas: 2
+      strategy: RollingUpdate
+      containers:
+        main:
+          image:
+            repository: ghcr.io/mealie-recipes/mealie
+            tag: v1.5.1
+          env:
+            BASE_URL: recettes.<path:secrets/data/common/infra#network_dns_zone>
+            # OIDC with Authentik
+            OIDC_AUTH_ENABLED: true
+            OIDC_SIGNUP_ENABLED: true
+            OIDC_CONFIGURATION_URL: "https://sts.<path:secrets/data/common/infra#network_dns_zone>/application/o/mealie/.well-known/openid-configuration"
+            OIDC_CLIENT_ID: <path:secrets/data/apps/mealie/oidc#client_id>
+            OIDC_CLIENT_SECRET: <path:secrets/data/apps/mealie/oidc#client_secret>
+            OIDC_USER_GROUP: "Mealie-Users"
+            OIDC_ADMIN_GROUP: "Mealie-Admins"
+            OIDC_AUTO_REDIRECT: false
+            OIDC_PROVIDER_NAME: Authentik
+            OIDC_REMEMBER_ME: true
+            # Postgres
+            DB_ENGINE: postgres
+            POSTGRES_USER: <path:secrets/data/apps/mealie/postgres#mealie_username>
+            POSTGRES_PASSWORD: <path:secrets/data/apps/mealie/postgres#mealie_password>
+            POSTGRES_SERVER: mealie-postgres-postgresql
+            POSTGRES_PORT: 5432
+            POSTGRES_DB: mealie
+          resources:
+            requests:
+              cpu: 10m
+              memory: 450Mi
+            limits:
+              cpu: 1500m
+              memory: 750Mi
+          ports:
+            - name: http
+              containerPort: 9000
+  service:
+    main:
+      ports:
+        http:
+          port: 9000
